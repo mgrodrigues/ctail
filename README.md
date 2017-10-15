@@ -84,3 +84,7 @@ Assumed defaults:
 
 Some performance tests still need to be done.
 The utility is only tested on Mac OS X.
+
+# Licence
+
+MIT. Refer to `LICENCE` file.
