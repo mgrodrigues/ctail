@@ -124,7 +124,7 @@ func (c *MockCtailCmd) Run() {
 	}
 	patterns = patterns + "{print $0}"
 
-	outfile, err := os.Create("/Users/michel/dev/go/src/ctail/testdata/out.txt")
+	outfile, err := os.Create("testdata/out.txt")
 	if err != nil {
 		panic(err)
 	}
@@ -145,7 +145,7 @@ func (c *MockCtailCmd) Run() {
 }
 
 func TestRun(t *testing.T) {
-	testfile := "/Users/michel/dev/go/src/ctail/testdata/out.txt"
+	testfile := "testdata/out.txt"
 	defer os.Remove(testfile)
 	mockCtail := MockCtailCmd{}
 

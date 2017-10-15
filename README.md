@@ -1,4 +1,4 @@
-# ctail
+# ctail [![Build Status](https://travis-ci.org/mgrodrigues/ctail.svg?branch=master)](https://travis-ci.org/mgrodrigues/ctail)
 
 Naive implementation in Go of a colorized `tail` command. 
 
