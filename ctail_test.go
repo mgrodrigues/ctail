@@ -1,104 +1,161 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"reflect"
 	"testing"
 )
 
 func TestLoadConfig(t *testing.T) {
-	config := loadConfig()
-	if config == nil {
+	ctail := Ctail{Name: "ctail", UnderlyingCmd: "tail", PipedCmd: "awk", Args: []string{"-f"}}
+	ctail.LoadConfig("testdata/ctail.config")
+	if ctail.Config == nil || reflect.DeepEqual(*ctail.Config, Config{}) {
 		t.Error("Configuration must have been loaded")
+	}
+}
+
+func TestLoadConfigFromBadFile(t *testing.T) {
+	ctail := Ctail{Name: "ctail", UnderlyingCmd: "tail", PipedCmd: "awk", Args: []string{"-f"}}
+	ctail.LoadConfig("testdata/ctail_bad_syntax.config")
+	if ctail.Config != nil && !reflect.DeepEqual(*ctail.Config, Config{}) {
+		t.Error("Configuration must be nil or empty")
+		t.FailNow()
 	}
 }
 
 func TestLoadDefaults(t *testing.T) {
-	config := defaults()
-	if config == nil {
-		t.Error("Configuration must have been loaded")
+	ctail := Ctail{Name: "ctail", UnderlyingCmd: "tail", PipedCmd: "awk", Args: []string{"-f"}}
+	ctail.LoadConfig("some_dummy_file_that_doesnt_exist")
+	if ctail.Config == nil || reflect.DeepEqual(*ctail.Config, Config{}) {
+		t.Error("Default Configuration must have been loaded")
 		t.FailNow()
 	}
 
-	if config.CheckColoredOutput != false {
-		t.Error("default check_colored_output must be true")
-	}
-
-	if config.Matches == nil {
-		t.Error("defaults matches must exists")
+	if len(ctail.Config.Matches) != 4 && len(ctail.Config.ColorDefinitions) != 17 {
+		t.Error("Expected 4 matches and 17 color definitions and got matches : " + string(len(ctail.Config.Matches)) + " and color definitions : " + string(len(ctail.Config.ColorDefinitions)))
 		t.FailNow()
-	}
-
-	if len(config.Matches) < 1 {
-		t.Error("there must have more that 1 matches configured by default")
 	}
 
 }
 
-/*
-
-	{ "color_name" : "default" , "ansi_definition" : "\\e[39m"},
-	{ "color_name" : "black", "ansi_definition" : "\\e[30m" },
-	{ "color_name" : "red", "ansi_definition" : "\\e[31m" },
-	{ "color_name" : "green" , "ansi_definition" : "\\e[32m"},
-	{ "color_name" : "yellow" , "ansi_definition" : "\\e[33m"},
-	{ "color_name" : "blue" , "ansi_definition" : "\\e[34m" },
-	{ "color_name" : "magenta" , "ansi_definition" : "\\e[35m" },
-	{ "color_name" : "cyan" , "ansi_definition" : "\\e[36m" },
-	{ "color_name" : "light gray" , "ansi_definition" : "\\e[37m" },
-	{ "color_name" : "dark gray" , "ansi_definition" : "\\e90[m" },
-	{ "color_name" : "light red" , "ansi_definition" : "\\e[91m" },
-	{ "color_name" : "light green" , "ansi_definition" : "\\e[92m" },
-	{ "color_name" : "light yellow" , "ansi_definition" : "\\e[93m" },
-	{ "color_name" : "light blue" , "ansi_definition" : "\\e[94m" },
-	{ "color_name" : "light magenta" , "ansi_definition" : "\\e[95m" },
-	{ "color_name" : "light cyan" , "ansi_definition" : "\\e[96m" },
-	{ "color_name" : "light white" , "ansi_definition" : "\\e[97m" }
-
-*/
-func TestGetAnsiColorFromMatch(t *testing.T) {
-	config := loadConfig()
-
-	for _, m := range config.Matches {
-		colorDefinition := getAnsiColor(m)
-		colorName := m.Color
-		switch colorName {
-		case "default":
-			if colorDefinition != "\\e[39m" {
-				t.Errorf("color %s must have \\e[39m as definition", colorName)
-			}
-		case "black":
-			if colorDefinition != "\\e[30m" {
-				t.Errorf("color %s must have \\e[30m as definition", colorName)
-			}
-		case "red":
-			if colorDefinition != "\\e[31m" {
-				t.Errorf("color %s must have \\e[31m as definition", colorName)
-			}
-		case "green":
-			if colorDefinition != "\\e[32m" {
-				t.Errorf("color %s must have \\e[32m as definition", colorName)
-			}
-		case "yellow":
-			if colorDefinition != "\\e[33m" {
-				t.Errorf("color %s must have \\e[33m as definition", colorName)
-			}
-		case "blue":
-			if colorDefinition != "\\e[34m" {
-				t.Errorf("color %s must have \\e[34m as definition", colorName)
-			}
-		}
-
+func TestAnsiColor(t *testing.T) {
+	m1 := Match{Expression: "expr1", Color: "blue"}
+	m2 := Match{Expression: "expr2", Color: "red"}
+	config := Config{
+		Matches: []Match{
+			m1,
+			m2,
+		},
+		ColorDefinitions: []ColorDefinition{
+			{Name: "red", ANSIDefinition: "\"\\033[34m\""},
+			{Name: "blue", ANSIDefinition: "\"\\033[31m\""},
+		},
 	}
 
+	c1 := config.AnsiColor(m1)
+	if c1 != "\"\\033[31m\"" {
+		t.Error("The expected color was:  \"\\033[31m\" and got:  " + c1)
+		t.FailNow()
+	}
 }
 
-func TestGetAnsiColorNotEmpty(t *testing.T) {
-	config := loadConfig()
+func TestDefaultAnsiColor(t *testing.T) {
+	config := Config{
+		Matches: []Match{},
+		ColorDefinitions: []ColorDefinition{
+			{Name: "default", ANSIDefinition: "\"\\033[34m\""},
+			{Name: "blue", ANSIDefinition: "\"\\033[31m\""},
+		},
+	}
 
-	for _, m := range config.Matches {
-		color := getAnsiColor(m)
-		if color == "" {
-			fmt.Printf("color must not be empty")
-		}
+	dft := config.DefaultAnsiColor()
+	if dft != "\"\\033[34m\"" {
+		t.Error("The expected color was:  \"\\033[34m\" and got:  " + dft)
+		t.FailNow()
+	}
+}
+
+func TestAnsiColorWhenFallbackToDefaults(t *testing.T) {
+	config := Config{}
+	m2 := Match{Expression: "expr2", Color: "red"}
+
+	dft := config.AnsiColor(m2)
+	if dft != "\"\\033[39m\"" {
+		t.Error("The expected color was:  \"\\033[39m\" and got:  " + dft)
+		t.FailNow()
+	}
+}
+
+type MockCtailCmd struct {
+	Config *Config
+}
+
+func (c *MockCtailCmd) LoadConfig(file string) {
+	var cfg Config
+	data := []byte(`{
+		"colors_definition" : [
+			{ "color_name" : "red", "ansi_definition" : "\"\\033[31m\""  }
+			],
+		"matches" : [
+			{ "expression" : "ERROR", "color" : "red"  } 
+			]
+			}`)
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot  unmarshal defaults. %s \n", err)
+	}
+	c.Config = &cfg
+}
+
+func (c *MockCtailCmd) Run() {
+	home := os.Getenv("HOME")
+	file := home + "/" + ConfigFile
+	c.LoadConfig(file)
+
+	// by default print all lines as they are.
+	var patterns string = ""
+	matches := c.Config.Matches
+	for _, m := range matches {
+		patterns = patterns + "/" + m.Expression + "/ { print " + c.Config.AnsiColor(m) + " $0 \"\\033[0m\";next} "
+	}
+	patterns = patterns + "{print $0}"
+
+	outfile, err := os.Create("/Users/michel/dev/go/src/ctail/testdata/out.txt")
+	if err != nil {
+		panic(err)
+	}
+	writer := bufio.NewWriter(outfile)
+	defer writer.Flush()
+	defer outfile.Close()
+
+	tailCmd := exec.Command("tail", "testdata/example.txt")
+	awkCmd := exec.Command("awk", patterns)
+	awkCmd.Stdin, _ = tailCmd.StdoutPipe()
+	awkCmd.Stdout = outfile
+
+	awkCmd.Start()
+	tailCmd.Run()
+
+	//go io.Copy(writer, os.Stdout)
+	awkCmd.Wait()
+}
+
+func TestRun(t *testing.T) {
+	testfile := "/Users/michel/dev/go/src/ctail/testdata/out.txt"
+	defer os.Remove(testfile)
+	mockCtail := MockCtailCmd{}
+
+	mockCtail.LoadConfig(testfile)
+	mockCtail.Run()
+
+	// reading the file and asserting the content
+	dat, _ := ioutil.ReadFile(testfile)
+	if string(dat) != "\033[31mERROR\033[0m\n" {
+		t.Error("Content is not as expected: Expecting \033[31mERROR\033[0m Got : " + string(dat))
+		t.FailNow()
 	}
 }
